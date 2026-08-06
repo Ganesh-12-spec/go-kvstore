@@ -65,6 +65,25 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(response)
 	})
+	http.HandleFunc("/keys/", func(w http.ResponseWriter, r *http.Request){
+		key := r.URL.Path[len("/keys/"):]
+		value, ok := store.Get(key)
+
+		if !ok {
+			http.Error(w, "key not found", http.StatusNotFound)
+			return
+		}
+		response := map[string]string{"value": value}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+
+
+
+
+
+
 	http.ListenAndServe(":8080", nil)
 
 	
