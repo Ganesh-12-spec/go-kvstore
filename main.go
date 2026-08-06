@@ -2,12 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"time"
 
 	"net/http"
 )
 
 type Entry struct {
 	  Value string
+		ExpiresAt time.Time
 
 }
 type Store struct {
@@ -27,12 +29,17 @@ func NewStore() *Store {
 		data: make(map[string]Entry),
 	}
 }
-func (s *Store) Set(key string, value string) {
-	s.data[key] = Entry{Value: value}
+func (s *Store) Set(key string, value string, ttl time.Duration) {
+	expiry := time.Now().Add(ttl)
+	s.data[key] = Entry{Value: value, ExpiresAt: expiry}
 }
 func (s *Store) Get(key string) (string, bool) {
 	entry, ok := s.data[key]
 	if !ok {
+		return "", false
+	}
+	if time.Now().After(entry.ExpiresAt){
+		delete(s.data, key)
 		return "", false
 	}
 	return entry.Value, true
@@ -59,7 +66,7 @@ func main() {
 			http.Error(w,"invaid request", http.StatusBadRequest)
 			return
 		}
-      store.Set(req.Key,req.Value)
+      store.Set(req.Key, req.Value, 24*time.Hour)
 
 			response := map[string]string{"status":"ok"}
 			w.Header().Set("Content-Type", "application/json")
