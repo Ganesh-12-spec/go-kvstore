@@ -2,10 +2,19 @@ package main
 
 import (
 	"encoding/json"
-	"time"
-
+	"fmt"
 	"net/http"
+	"time"
 )
+
+func loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next(w,r)
+		duration := time.Since(start)
+		fmt.Printf("%s %s %s\n", r.Method, r.URL.Path,duration)
+	}
+}
 
 type Entry struct {
 	  Value string
@@ -55,35 +64,37 @@ func main() {
 	
 
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/", loggingMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]string{"status": "ok"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
-	})
-	http.HandleFunc("/keys", func(w http.ResponseWriter, r *http.Request) {
-		var req SetRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w,"invaid request", http.StatusBadRequest)
-			return
-		}
-      store.Set(req.Key, req.Value, 24*time.Hour)
+	}))
 
-			response := map[string]string{"status":"ok"}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
-	})
-	http.HandleFunc("/keys/", func(w http.ResponseWriter, r *http.Request){
-		key := r.URL.Path[len("/keys/"):]
-		value, ok := store.Get(key)
+	http.HandleFunc("/keys", loggingMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	var req SetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invaid request", http.StatusBadRequest)
+		return
+	}
+	store.Set(req.Key, req.Value, 24*time.Hour)
 
-		if !ok {
-			http.Error(w, "key not found", http.StatusNotFound)
-			return
-		}
-		response := map[string]string{"value": value}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	})
+	response := map[string]string{"status": "ok"}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}))
+
+http.HandleFunc("/keys/", loggingMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Path[len("/keys/"):]
+	value, ok := store.Get(key)
+
+	if !ok {
+		http.Error(w, "key not found", http.StatusNotFound)
+		return
+	}
+	response := map[string]string{"value": value}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}))
 
 
 
