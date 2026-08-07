@@ -15,6 +15,21 @@ func loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		fmt.Printf("%s %s %s\n", r.Method, r.URL.Path,duration)
 	}
 }
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc{
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Add authentication logic here
+		key := r.Header.Get("Authorization")
+
+		if key != "my-secret-key" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
+
+
 
 type Entry struct {
 	  Value string
@@ -70,7 +85,7 @@ func main() {
 		json.NewEncoder(w).Encode(response)
 	}))
 
-	http.HandleFunc("/keys", loggingMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/keys", loggingMiddleware(authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 	var req SetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invaid request", http.StatusBadRequest)
@@ -81,9 +96,9 @@ func main() {
 	response := map[string]string{"status": "ok"}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-}))
+})))
 
-http.HandleFunc("/keys/", loggingMiddleware(func(w http.ResponseWriter, r *http.Request) {
+http.HandleFunc("/keys/", loggingMiddleware(authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Path[len("/keys/"):]
 	value, ok := store.Get(key)
 
@@ -94,7 +109,7 @@ http.HandleFunc("/keys/", loggingMiddleware(func(w http.ResponseWriter, r *http.
 	response := map[string]string{"value": value}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-}))
+})))
 
 
 
