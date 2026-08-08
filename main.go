@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -38,6 +39,7 @@ type Entry struct {
 }
 type Store struct {
 	data map[string]Entry
+	mu  sync.RWMutex
 }
 type SetRequest struct {
 	Key string `json:"key"`
@@ -54,11 +56,16 @@ func NewStore() *Store {
 	}
 }
 func (s *Store) Set(key string, value string, ttl time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	expiry := time.Now().Add(ttl)
 	s.data[key] = Entry{Value: value, ExpiresAt: expiry}
 }
 func (s *Store) Get(key string) (string, bool) {
+		s.mu.Lock()
+	  defer s.mu.Unlock()
 	entry, ok := s.data[key]
+
 	if !ok {
 		return "", false
 	}
