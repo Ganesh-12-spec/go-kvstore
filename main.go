@@ -4,87 +4,87 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 )
 
 func loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next(w,r)
-		duration := time.Since(start)
-		fmt.Printf("%s %s %s\n", r.Method, r.URL.Path,duration)
-	}
-}
-func authMiddleware(next http.HandlerFunc) http.HandlerFunc{
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Add authentication logic here
-		key := r.Header.Get("Authorization")
-
-		if key != "my-secret-key" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
 		next(w, r)
+		duration := time.Since(start)
+		fmt.Printf("%s %s %s\n", r.Method, r.URL.Path, duration)
 	}
 }
-
-
-
 
 type Entry struct {
-	  Value string
-		ExpiresAt time.Time
-
+	Value     string
+	ExpiresAt time.Time
 }
+
 type Store struct {
 	data map[string]Entry
-	mu  sync.RWMutex
 }
+
 type SetRequest struct {
-	Key string `json:"key"`
+	Key   string `json:"key"`
 	Value string `json:"value"`
 }
-
-
-
-
 
 func NewStore() *Store {
 	return &Store{
 		data: make(map[string]Entry),
 	}
 }
+
 func (s *Store) Set(key string, value string, ttl time.Duration) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	expiry := time.Now().Add(ttl)
 	s.data[key] = Entry{Value: value, ExpiresAt: expiry}
 }
-func (s *Store) Get(key string) (string, bool) {
-		s.mu.Lock()
-	  defer s.mu.Unlock()
-	entry, ok := s.data[key]
 
+func (s *Store) Get(key string) (string, bool) {
+	entry, ok := s.data[key]
 	if !ok {
 		return "", false
 	}
-	if time.Now().After(entry.ExpiresAt){
+	if time.Now().After(entry.ExpiresAt) {
 		delete(s.data, key)
 		return "", false
 	}
 	return entry.Value, true
 }
 
+func setHandler(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req SetRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		store.Set(req.Key, req.Value, 24*time.Hour)
 
+		response := map[string]string{"status": "ok"}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+}
 
+func getHandler(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := r.URL.Path[len("/keys/"):]
+		value, ok := store.Get(key)
 
-
+		if !ok {
+			http.Error(w, "key not found", http.StatusNotFound)
+			return
+		}
+		response := map[string]string{"value": value}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+}
 
 func main() {
-  store := NewStore()
-	
-
+	store := NewStore()
 
 	http.HandleFunc("/", loggingMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]string{"status": "ok"}
@@ -92,39 +92,8 @@ func main() {
 		json.NewEncoder(w).Encode(response)
 	}))
 
-	http.HandleFunc("/keys", loggingMiddleware(authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-	var req SetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invaid request", http.StatusBadRequest)
-		return
-	}
-	store.Set(req.Key, req.Value, 24*time.Hour)
-
-	response := map[string]string{"status": "ok"}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-})))
-
-http.HandleFunc("/keys/", loggingMiddleware(authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-	key := r.URL.Path[len("/keys/"):]
-	value, ok := store.Get(key)
-
-	if !ok {
-		http.Error(w, "key not found", http.StatusNotFound)
-		return
-	}
-	response := map[string]string{"value": value}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-})))
-
-
-
-
-
-
+	http.HandleFunc("/keys", loggingMiddleware(setHandler(store)))
+	http.HandleFunc("/keys/", loggingMiddleware(getHandler(store)))
 
 	http.ListenAndServe(":8080", nil)
-
-	
 }
